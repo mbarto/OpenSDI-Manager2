@@ -35,6 +35,7 @@ import com.nimbusds.oauth2.sdk.AuthorizationCode;
 import com.nimbusds.oauth2.sdk.AuthorizationCodeGrant;
 import com.nimbusds.oauth2.sdk.AuthorizationRequest;
 import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.oauth2.sdk.RefreshTokenGrant;
 import com.nimbusds.oauth2.sdk.ResponseType;
 import com.nimbusds.oauth2.sdk.Scope;
 import com.nimbusds.oauth2.sdk.SerializeException;
@@ -45,6 +46,7 @@ import com.nimbusds.oauth2.sdk.http.HTTPResponse;
 import com.nimbusds.oauth2.sdk.id.ClientID;
 import com.nimbusds.oauth2.sdk.id.State;
 import com.nimbusds.oauth2.sdk.token.AccessToken;
+import com.nimbusds.oauth2.sdk.token.RefreshToken;
 import com.nimbusds.openid.connect.sdk.OIDCAccessTokenResponse;
 
 /**
@@ -68,6 +70,7 @@ public class OpenIdConnectLoginService implements OAuth2LoginService {
 			String clientId = configuration.getValue("clientId", "").toString();
 			String returnUrl = configuration.getValue("returnUrl", "").toString();
 			String authorizations = configuration.getValue("authorizations", "openid email profile").toString();
+			String accessType = configuration.getValue("accessType", "online").toString();
 			if(!loginUrl.isEmpty() && !clientId.isEmpty() && !returnUrl.isEmpty()) {
 				AuthorizationRequest req = new AuthorizationRequest(
 		                new URL(loginUrl),
@@ -78,7 +81,9 @@ public class OpenIdConnectLoginService implements OAuth2LoginService {
 		                state
 		        );
 	       
-		        String location = req.toHTTPRequest().getURL().toExternalForm()+"?"+req.toHTTPRequest().getQuery();
+				String location = req.toHTTPRequest().getURL().toExternalForm()
+						+ "?" + req.toHTTPRequest().getQuery()
+						+ "&access_type=" + accessType;
 		        // redirect to service login page
 	            response.sendRedirect(location);
 			} else {
@@ -93,7 +98,7 @@ public class OpenIdConnectLoginService implements OAuth2LoginService {
 	}
 	
 	@Override
-	public AccessToken getToken(OSDIConfigurationKVP configuration, String code) {
+	public OIDCAccessTokenResponse getToken(OSDIConfigurationKVP configuration, String code) {
 		
 		String clientId = configuration.getValue("clientId", "").toString();
 		String clientSecret = configuration.getValue("clientSecret", "").toString();
@@ -108,9 +113,9 @@ public class OpenIdConnectLoginService implements OAuth2LoginService {
 								new AuthorizationCode(code), new URL(returnUrl)));
 	
 				HTTPResponse resp = tokenRequest.toHTTPRequest().send();
-				OIDCAccessTokenResponse tokenResponse = OIDCAccessTokenResponse
+				return OIDCAccessTokenResponse
 						.parse(resp);
-				return tokenResponse.getAccessToken();
+				
 			} else {
 				throw new IllegalArgumentException("Configuration is not valid. Either tokenUrl, clientId, clientSecret or returnUrl are missing");
 			}
@@ -127,13 +132,48 @@ public class OpenIdConnectLoginService implements OAuth2LoginService {
 	}
 
 	@Override
-	public void returnToClient(OSDIConfigurationKVP configuration, HttpServletResponse response, HttpSession session, AccessToken token) {
+	public void returnToClient(OSDIConfigurationKVP configuration,
+			HttpServletResponse response, HttpSession session,
+			AccessToken token, RefreshToken refreshToken) {
 		try {
-			response.sendRedirect((String)session.getAttribute("returnPage") + "?token=" + token.toJSONString());
+			String redirectUrl = (String)session.getAttribute("returnPage") + "?token=" + token.toJSONString();
+			if(refreshToken != null) {
+				redirectUrl += "&refresh=" + refreshToken.getValue();
+			}
+			response.sendRedirect(redirectUrl);
 		} catch (IOException e) {
 			throw new IllegalArgumentException("Error calling application page");
 		}
 		
+	}
+
+	@Override
+	public OIDCAccessTokenResponse refreshToken(OSDIConfigurationKVP configuration, String token) {
+		String clientId = configuration.getValue("clientId", "").toString();
+		String clientSecret = configuration.getValue("clientSecret", "").toString();
+		String tokenUrl = configuration.getValue("tokenUrl", "").toString();
+		if(!tokenUrl.isEmpty() && !clientId.isEmpty() && !clientSecret.isEmpty()) {
+			TokenRequest tokenRequest;
+			try {
+				tokenRequest = new TokenRequest(new URL(tokenUrl),
+						new ClientSecretPost(new ClientID(clientId), new Secret(
+								clientSecret)), new RefreshTokenGrant(new RefreshToken(token)));
+				HTTPResponse resp = tokenRequest.toHTTPRequest().send();
+				return OIDCAccessTokenResponse
+						.parse(resp);
+			} catch (MalformedURLException e) {
+				throw new IllegalArgumentException("Malformed tokenUrl: " + tokenUrl);
+			} catch (SerializeException e) {
+				throw new IllegalArgumentException("Error getting token from OAuth2 service");
+			} catch (IOException e) {
+				throw new IllegalArgumentException("Error getting token from OAuth2 service");
+			} catch (ParseException e) {
+				throw new IllegalArgumentException("Error parsing token from OAuth2 service");
+			}
+			
+		} else {
+			throw new IllegalArgumentException("Configuration is not valid. Either tokenUrl, clientId or clientSecret are missing");
+		}
 	}
 
 }

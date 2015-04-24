@@ -35,8 +35,10 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.nimbusds.oauth2.sdk.token.AccessToken;
+import com.nimbusds.openid.connect.sdk.OIDCAccessTokenResponse;
 
 /**
  * Login Service for OAuth2 compatible services.
@@ -76,16 +78,31 @@ public class OAuth2Controller extends OSDIModuleController {
 	            throw new IllegalArgumentException("Login failed");
 			} else {
 				// retrieve access token
-				AccessToken token = oAuthService.getToken(configuration, request.getParameter("code"));
+				OIDCAccessTokenResponse token = oAuthService.getToken(configuration, request.getParameter("code"));
 				if(token != null) {
 					// redirect back to the client
-					oAuthService.returnToClient(configuration, response, session, token);
+					oAuthService.returnToClient(configuration, response, session, token.getAccessToken(), token.getRefreshToken());
 				} else {
 					throw new IllegalArgumentException("Login failed");
 				}
 			}
 		}
 		
+	}
+	
+	@RequestMapping(value = "/token/{type}", method = RequestMethod.GET)
+	public @ResponseBody String checkToken(@PathVariable String type, HttpServletRequest request, HttpServletResponse response,
+			HttpSession session) throws OSDIConfigurationException {
+		OSDIConfigurationKVP configuration = (OSDIConfigurationKVP)loadConfiguration(request); 
+		if(request.getParameter("refresh") != null && !request.getParameter("refresh").trim().isEmpty()) {
+			OIDCAccessTokenResponse token = oAuthService.refreshToken(configuration,request.getParameter("refresh"));
+			if(token != null) {
+				return token.getAccessToken().toJSONString();
+			} else {
+				throw new IllegalArgumentException("Login failed");
+			}
+		}
+		return "";
 	}
 
 	@Override

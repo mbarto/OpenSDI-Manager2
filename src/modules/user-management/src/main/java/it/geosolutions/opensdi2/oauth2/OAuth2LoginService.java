@@ -27,6 +27,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
 import com.nimbusds.oauth2.sdk.token.AccessToken;
+import com.nimbusds.oauth2.sdk.token.RefreshToken;
+import com.nimbusds.openid.connect.sdk.OIDCAccessTokenResponse;
 
 /**
  * Login Service implementing the OAuth 2.0 protocol.
@@ -50,7 +52,7 @@ public interface OAuth2LoginService {
 	 * 
 	 * @param code
 	 */
-	public AccessToken getToken(OSDIConfigurationKVP configuration, String code);
+	public OIDCAccessTokenResponse getToken(OSDIConfigurationKVP configuration, String code);
 
 	/**
 	 * Calls back the calling page with an authentication token.
@@ -58,5 +60,9 @@ public interface OAuth2LoginService {
 	 * @param token
 	 */
 	public void returnToClient(OSDIConfigurationKVP configuration,
-			HttpServletResponse response, HttpSession session, AccessToken token);
+			HttpServletResponse response, HttpSession session, AccessToken token,
+			RefreshToken refreshToken);
+
+	public OIDCAccessTokenResponse refreshToken(OSDIConfigurationKVP configuration,
+			String token);
 }
